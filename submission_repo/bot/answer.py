@@ -179,7 +179,7 @@ def _format_answer(question: str, answer: str) -> str:
     # Only collapse an unambiguous numeric reply. Dates or two competing counts
     # must not become the first digit the model happened to mention.
     if re.match(r"\s*how many\b", question, re.I):
-        numbers = re.findall(r"(?<![\w.])\d+(?:,\d{3})*(?![\w.])", answer.rstrip('.'))
+        numbers = re.findall(r"(?<![\w.])[-+]?\d+(?:,\d{3})*(?![\w.])", answer.rstrip('.'))
         if len(numbers) == 1:
             return numbers[0].replace(',', '')
     return answer

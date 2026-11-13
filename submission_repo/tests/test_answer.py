@@ -32,6 +32,7 @@ class AnswerTests(unittest.TestCase):
     def test_count_parser_does_not_take_first_of_multiple_numbers(self):
         self.assertEqual(answer._format_answer("How many printers?", "There are 7 printers."), "7")
         self.assertEqual(answer._format_answer("How many printers?", "4 plus 3 is 7"), "4 plus 3 is 7")
+        self.assertEqual(answer._format_answer("How many more posters?", "-8"), "-8")
 
     def test_empty_index_never_calls_embedding(self):
         with patch.object(answer, "get_store") as store, patch.object(answer, "_documents", return_value=()), patch.object(answer, "embed") as embed:
