@@ -1,5 +1,7 @@
 # InnoWing Chatbot Challenge 2026
 
+> **Independent self-training fork:** this implementation adds an opt-in Gemini provider and is not an official challenge submission. See the [runbook](submission_repo/README.md) and [implementation report](IMPLEMENTATION_REPORT.md). Original teaching materials follow below.
+
 Materials for the InnoWing Chatbot Challenge — building a retrieval-augmented
 (RAG) chatbot about the Tam Wing Fan Innovation Wing.
 
