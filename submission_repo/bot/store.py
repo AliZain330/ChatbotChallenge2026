@@ -7,9 +7,9 @@ from pathlib import Path
 
 import chromadb
 
-from bot.llm import embed
+from bot.llm import embed, PROVIDER, EMBED_DEPLOYMENT
 
-DEFAULT_PATH = "data/chroma"
+DEFAULT_PATH = "data/chroma" if PROVIDER == "azure" else f"data/chroma-gemini-{EMBED_DEPLOYMENT}"
 DEFAULT_NAME = "chatbot"
 
 # One PersistentClient per path, cached for the life of the process.
@@ -31,12 +31,6 @@ def get_store(path: str = DEFAULT_PATH, name: str = DEFAULT_NAME, reset: bool = 
     so it is safe to call more than once in the same process.
     """
     if path not in _stores:
-        # First time this path is opened in this process. Safe to wipe a
-        # stale, wrong-chromadb-version index here, since no client for
-        # this path exists yet.
-        if reset and Path(path).exists():
-            import shutil
-            shutil.rmtree(path)
         try:
             _stores[path] = chromadb.PersistentClient(path=path)
         except KeyError as e:
@@ -48,10 +42,9 @@ def get_store(path: str = DEFAULT_PATH, name: str = DEFAULT_NAME, reset: bool = 
 
     client = _stores[path]
     if reset:
-        try:
+        # Reset only the named collection: never recursively delete a caller's path.
+        if name in {collection.name for collection in client.list_collections()}:
             client.delete_collection(name)
-        except Exception:
-            pass
     return client.get_or_create_collection(name)
 
 
@@ -72,7 +65,7 @@ def query(store, question: str, k: int = 5, where: dict = None) -> list[dict]:
 
     Chroma returns squared L2 distance by default, so lower is closer.
     """
-    r = store.query(query_embeddings=embed([question]), n_results=k, where=where or None)
+    r = store.query(query_embeddings=embed([question], task_type="RETRIEVAL_QUERY"), n_results=k, where=where or None)
     return [
         {"text": d, "metadata": m, "distance": dist}
         for d, m, dist in zip(r["documents"][0], r["metadatas"][0], r["distances"][0])
