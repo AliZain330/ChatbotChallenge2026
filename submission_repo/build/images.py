@@ -24,7 +24,11 @@ VISIBLE TEXT: transcribe legible words, names, dates, labels, award winners,
 poster titles, team names and signage exactly; retain original language.
 COUNTS: count clearly visible objects by category (tables, printers, chairs,
 posters, cushions); distinguish visible count from room-wide total. If obscured,
-give a lower bound explicitly, never invent an exact total.
+give a lower bound explicitly, never invent an exact total. Count each physical
+furniture group separately. Enumerate visible cushions left-to-right by colour
+and position before giving a group total; count continuous upholstered pads,
+not the support panels underneath. Separate freestanding cube seats, low bench
+cushions, and cushions on raised tiers. Do not combine those categories.
 SPATIAL DETAILS: wall lettering and items left/right/behind relevant furniture.
 UNCERTAINTY: identify unreadable, cropped, ambiguous or occluded details.
 Describe only this photograph, not current conditions or facts outside the frame.
