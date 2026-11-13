@@ -86,7 +86,7 @@ def prepare_chunks(pages: list[dict]) -> list[dict]:
     return records
 
 
-def build_index(pages: list[dict], reset: bool = True, path: str = None):
+def build_index(pages: list[dict], reset: bool = True, path: str = None, wait_for_quota: bool = False):
     """Embed all chunks before replacing the collection, avoiding loss on API failure."""
     from build.embeddings import cached_embed
     from bot.store import get_store, DEFAULT_PATH
@@ -94,7 +94,7 @@ def build_index(pages: list[dict], reset: bool = True, path: str = None):
     records = prepare_chunks(pages)
     if not records:
         raise ValueError('index requires >=1 nonempty chunk, actual=0; scrape pages before indexing')
-    vectors = cached_embed([record['text'] for record in records])
+    vectors = cached_embed([record['text'] for record in records], wait_for_quota=wait_for_quota)
     if len(vectors) != len(records):
         raise RuntimeError(f'embedding count expected={len(records)}, actual={len(vectors)}; rerun embedding')
     store = get_store(path=path or DEFAULT_PATH, reset=reset)
@@ -109,13 +109,34 @@ def build_index(pages: list[dict], reset: bool = True, path: str = None):
     return store
 
 
+def write_lexical_records(pages: list[dict], output: Path) -> int:
+    """Save the complete text inventory without API calls or Chroma changes."""
+    records = prepare_chunks(pages)
+    if not records:
+        raise ValueError('lexical index requires >=1 nonempty chunk, actual=0; scrape pages before indexing')
+    output = Path(output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    temporary = output.with_suffix(output.suffix + '.tmp')
+    temporary.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding='utf-8')
+    temporary.replace(output)
+    return len(records)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--pages', type=Path, default=Path('data/pages.json'))
     parser.add_argument('--store', default=None)
+    parser.add_argument('--lexical-only', action='store_true',
+                        help='Write all text records locally, without embedding or changing Chroma')
+    parser.add_argument('--lexical-output', type=Path, default=Path('data/text_records.json'))
+    parser.add_argument('--wait-for-quota', action='store_true', help='Wait only the provider-reported per-minute delay during ingestion; never enable paid fallback')
     args = parser.parse_args()
     pages = json.loads(args.pages.read_text(encoding='utf-8-sig'))
-    build_index(pages, path=args.store)
+    if args.lexical_only:
+        count = write_lexical_records(pages, args.lexical_output)
+        print(f'wrote {count} lexical text records to {args.lexical_output}')
+        return
+    build_index(pages, path=args.store, wait_for_quota=args.wait_for_quota)
 
 
 if __name__ == '__main__':

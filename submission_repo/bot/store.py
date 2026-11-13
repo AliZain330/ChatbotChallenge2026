@@ -32,7 +32,7 @@ def get_store(path: str = DEFAULT_PATH, name: str = DEFAULT_NAME, reset: bool = 
     """
     if path not in _stores:
         try:
-            _stores[path] = chromadb.PersistentClient(path=path)
+            _stores[path] = chromadb.PersistentClient(path=path, settings=chromadb.config.Settings(anonymized_telemetry=False))
         except KeyError as e:
             raise RuntimeError(
                 f"chromadb could not read the index at {path} ({e}). It was likely "

@@ -10,6 +10,8 @@ import math
 from pathlib import Path
 import re
 import sqlite3
+import sys
+import time
 from typing import Optional
 
 from bot import llm
@@ -58,11 +60,26 @@ def _open_cache(connection: sqlite3.Connection, identity: dict, legacy: Path) ->
     return dimensions
 
 
-def cached_embed(texts: list[str], *, embed_fn=None, cache_dir: Path = Path('data')) -> list[list[float]]:
+def _quota_delay(error: RuntimeError) -> Optional[float]:
+    """Accept only provider-reported minute-quota delays, never daily limits."""
+    message = str(error)
+    identifiers = re.findall(r'\bquotaId=([^;,\s]+)', message)
+    delay = re.search(r'\bretry_after=(\d+(?:\.\d+)?)s(?:[;\s]|$)', message)
+    if ('actual=429' not in message or not identifiers or 'PerDay' in message
+            or not all('PerMinute' in identifier for identifier in identifiers) or not delay):
+        return None
+    seconds = float(delay.group(1))
+    return seconds if math.isfinite(seconds) and seconds > 0 else None
+
+
+def cached_embed(texts: list[str], *, embed_fn=None, cache_dir: Path = Path('data'),
+                 wait_for_quota: bool = False) -> list[list[float]]:
     """Return vectors in input order; checkpoint missing unique texts per batch.
 
     Provider/model/document-task identity lives in the database; rows use SHA256
     of exact UTF-8 document text. Query embeddings must not enter this cache.
+    Optional ingestion-only quota waits use exactly a provider's retry hint;
+    default behavior propagates failures immediately and runtime never calls it.
     """
     if not texts:
         return []
@@ -94,7 +111,17 @@ def cached_embed(texts: list[str], *, embed_fn=None, cache_dir: Path = Path('dat
                 cache[key] = vector
         for start in range(0, len(missing), batch_size):
             batch = missing[start:start + batch_size]
-            vectors = embedding([text for _, text in batch], task_type='RETRIEVAL_DOCUMENT')
+            while True:
+                try:
+                    vectors = embedding([text for _, text in batch], task_type='RETRIEVAL_DOCUMENT')
+                    break
+                except RuntimeError as error:
+                    delay = _quota_delay(error) if provider == 'gemini' and wait_for_quota else None
+                    if delay is None:
+                        raise
+                    print(f'[embedding ingestion] batch inputs={len(batch)}, provider minute quota reached; '
+                          f'waiting retry_after={delay:g}s before the same batch', file=sys.stderr)
+                    time.sleep(delay)
             if len(vectors) != len(batch):
                 raise RuntimeError(f'embedding cache batch count required={len(batch)}, actual={len(vectors)}; rerun ingestion after fixing gateway')
             for vector in vectors:

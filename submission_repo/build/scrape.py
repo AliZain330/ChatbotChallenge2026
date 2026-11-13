@@ -209,6 +209,26 @@ def extract(html: str, url: str) -> dict:
             'inventory_complete': any(im.get('inventory_complete') for im in images)}
 
 
+def write_snapshot(target: Path, data: object, required: bool = False) -> bool:
+    """Publish atomically; defer intermediate snapshots held by Windows readers.
+
+    The next collected page naturally retries publication, without sleeps or an
+    arbitrary retry count. A required final snapshot raises instead of hiding loss.
+    """
+    temporary = target.with_suffix('.tmp')
+    try:
+        temporary.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding='utf-8')
+        temporary.replace(target)
+    except PermissionError as exc:
+        message = (f'snapshot requires writable unlocked target={target}, actual={exc}; '
+                   'close persistent file readers and rerun with --resume if final publication fails')
+        if required:
+            raise RuntimeError(message) from exc
+        print(f'checkpoint deferred: {message}; next page retries', file=sys.stderr)
+        return False
+    return True
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--max-pages', type=int, default=DEFAULT_MAX_PAGES)
@@ -224,16 +244,14 @@ def main() -> None:
         pages = json.loads((args.output / 'pages.json').read_text(encoding='utf-8'))
     existing_pages = {page['url']: page for page in pages}
 
-    def save():
+    def save(required=False):
         images = [image for page in pages for image in page['images']]
         outputs = [('crawl_report.json', reports)]
         if pages:
             outputs.extend([('pages.json', pages), ('images.json', images)])
         for name, data in outputs:
             target = args.output / name
-            temp = target.with_suffix('.tmp')
-            temp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding='utf-8')
-            temp.replace(target)
+            write_snapshot(target, data, required=required)
 
     def collect(url, html):
         page = extract(html, url)
@@ -247,7 +265,7 @@ def main() -> None:
         reports.append(report)
         urls = crawl(site, None if args.all_pages else args.max_pages, report=report,
                      workers=args.workers, on_page=collect, existing_pages=existing_pages)
-        save()
+        save(required=True)
         if not urls:
             failures.append(site)
     if not pages:

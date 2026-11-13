@@ -110,6 +110,43 @@ class EmbeddingCacheTests(unittest.TestCase):
             self.cache(['a'], MagicMock())
         self.assertEqual(self.rows(), {})
 
+    def test_opt_in_minute_quota_wait_uses_exact_provider_delay(self):
+        error = RuntimeError('Gemini HTTP required=2xx, actual=429; '
+                             'quotaId=EmbedContentRequestsPerMinutePerUserPerProjectPerModel-FreeTier; '
+                             'quotaValue=100; retry_after=28.5s')
+        fn = MagicMock(side_effect=[error, [[1.0, 0.0]]])
+        with patch.object(embeddings.time, 'sleep') as sleep:
+            result = embeddings.cached_embed(['a'], embed_fn=fn, cache_dir=self.folder,
+                                             wait_for_quota=True)
+        self.assertEqual(result, [[1.0, 0.0]])
+        sleep.assert_called_once_with(28.5)
+        self.assertEqual(fn.call_count, 2)
+        self.assertEqual(fn.call_args_list[0], fn.call_args_list[1])
+
+    def test_default_does_not_wait_for_minute_quota(self):
+        fn = MagicMock(side_effect=RuntimeError('actual=429; quotaId=RequestsPerMinute; retry_after=28s'))
+        with patch.object(embeddings.time, 'sleep') as sleep, self.assertRaises(RuntimeError):
+            self.cache(['a'], fn)
+        sleep.assert_not_called()
+        self.assertEqual(fn.call_count, 1)
+
+    def test_daily_unknown_missing_hint_and_non429_fail_without_wait(self):
+        errors = ['actual=429; quotaId=RequestsPerDay; retry_after=28s',
+                  'actual=429; quotaId=RequestsPerMinute; quotaId=RequestsPerDay; retry_after=28s',
+                  'actual=429; quotaId=UnknownQuota; retry_after=28s',
+                  'actual=429; quotaId=RequestsPerMinute',
+                  'actual=503; quotaId=RequestsPerMinute; retry_after=28s',
+                  'actual=429; retry_after=28s',
+                  'actual=429; quotaId=RequestsPerMinute; retry_after=0s']
+        for message in errors:
+            fn = MagicMock(side_effect=RuntimeError(message))
+            with self.subTest(message=message), patch.object(embeddings.time, 'sleep') as sleep:
+                with self.assertRaises(RuntimeError):
+                    embeddings.cached_embed(['a'], embed_fn=fn, cache_dir=self.folder,
+                                            wait_for_quota=True)
+                sleep.assert_not_called()
+                self.assertEqual(fn.call_count, 1)
+
 
 if __name__ == '__main__':
     unittest.main()

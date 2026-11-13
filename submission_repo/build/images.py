@@ -127,7 +127,8 @@ def image_records(descriptions: dict, images: list[dict]) -> list[dict]:
     """One record per unique image; identities survive manifest reordering."""
     by_src = {}
     for image in images:
-        by_src.setdefault(image["src"], image)
+        if image["src"] not in by_src or image.get("metadata_basis") == "gallery section heading":
+            by_src[image["src"]] = image
     records = []
     for src, image in by_src.items():
         text = descriptions.get(src, "").strip()
@@ -147,19 +148,34 @@ def image_records(descriptions: dict, images: list[dict]) -> list[dict]:
         kind = image.get("type", "poster" if is_poster else "image")
         meta = {"url": image.get("page", src), "image": src, "kind": "image",
                 "type": kind, "year": year, "zone": image.get("zone", ""),
+                "has_visual_description": bool(descriptions.get(src)) and "no image understanding" not in image.get("provenance", ""),
                 "title": image.get("title", ""), "page_type": image.get("page_type", ""),
                 "topic": "workshop" if re.search(r"\bworkshops?\b", evidence, re.I) else "",
                 "metadata_basis": image.get("metadata_basis", "labels and vision description"),
-                "inventory_page_complete": bool(image.get("inventory_page_complete", False)),
+                "inventory_page_complete": bool(image.get("inventory_page_complete", image.get("inventory_complete", False))),
                 "provenance": image.get("provenance", "gallery HTML inventory" if image.get("metadata_basis") else "website image described by vision model")}
         full = "\n".join(part for part in [image.get("zone"), labels, text] if part)
         records.append({"id": "img_" + hashlib.sha256(src.encode()).hexdigest(), "text": full, "metadata": meta})
     return records
 
 
-def index_descriptions(descriptions: dict, images: list[dict]) -> None:
+def _save_search_records(records: list[dict], path: Path = Path("data/image_records.json")) -> None:
+    existing = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+    merged = {record["id"]: record for record in existing}
+    merged.update({record["id"]: record for record in records})
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(list(merged.values()), ensure_ascii=False), encoding="utf-8")
+    temporary.replace(path)
+
+
+def index_descriptions(descriptions: dict, images: list[dict], lexical_only: bool = False) -> None:
     """Upsert stable IDs; rerunning does not duplicate posters or photographs."""
     records = image_records(descriptions, images)
+    _save_search_records(records)
+    if lexical_only:
+        print(f"indexed {len(records)} local image records without embeddings", file=sys.stderr)
+        return
     store = get_store(reset=False)
     # Reuse the gateway helper's supplied batching rather than add another limit.
     vectors = cached_embed([record["text"] for record in records], embed_fn=embed) if records else []
@@ -175,16 +191,19 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", type=Path, default=Path("data/images.json"))
     parser.add_argument("--workshop", action="store_true", help="also process organizer's five local photographs")
+    parser.add_argument("--workshop-only", action="store_true", help="process only the five authorized workshop photographs")
     parser.add_argument("--alt-only", action="store_true", help="index existing alt/caption text; no vision calls (embeddings still need gateway)")
     parser.add_argument("--inventory-only", action="store_true", help="index explicit gallery metadata without downloading/describing images")
+    parser.add_argument("--lexical-only", action="store_true", help="save searchable local records without embedding calls")
     args = parser.parse_args()
-    images = json.loads(args.manifest.read_text(encoding="utf-8")) if args.manifest.exists() else []
-    if args.workshop:
+    images = ([] if args.workshop_only else
+              json.loads(args.manifest.read_text(encoding="utf-8")) if args.manifest.exists() else [])
+    if args.workshop or args.workshop_only:
         images.extend(workshop_images())
     if not images:
         parser.error(f"images minimum=1, actual=0; scrape sites or use --workshop (manifest={args.manifest})")
     if args.inventory_only:
-        index_descriptions({}, images)
+        index_descriptions({}, images, lexical_only=args.lexical_only)
         return
     if args.alt_only:
         descriptions = {image["src"]: " ".join(filter(None, [image.get("alt"), image.get("caption")]))
@@ -193,7 +212,7 @@ def main() -> None:
                   for image in images]
     else:
         descriptions = describe_all(images)
-    index_descriptions(descriptions, images)
+    index_descriptions(descriptions, images, lexical_only=args.lexical_only)
 
 
 if __name__ == "__main__":

@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import unittest
+import json
 import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from build.index import build_index, chunk, page_metadata, prepare_chunks
-from build.scrape import allowed, canonical_url, crawl, extract, sitemap_urls, main as scrape_main
+from build.index import build_index, chunk, page_metadata, prepare_chunks, main as index_main
+from build.scrape import allowed, canonical_url, crawl, extract, sitemap_urls, main as scrape_main, write_snapshot
 
 
 class ExtractionTests(unittest.TestCase):
@@ -70,6 +71,18 @@ class ExtractionTests(unittest.TestCase):
         self.assertEqual(fetch.call_count, 2)
 
 
+    def test_windows_reader_lock_defers_checkpoint_and_next_page_can_publish(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / 'report.json'
+            target.write_text('{"old": true}', encoding='utf-8')
+            with patch.object(Path, 'replace', side_effect=PermissionError('WinError 5: reader lock')):
+                self.assertFalse(write_snapshot(target, {'new': True}))
+                self.assertEqual(json.loads(target.read_text()), {'old': True})
+                with self.assertRaisesRegex(RuntimeError, 'close persistent file readers'):
+                    write_snapshot(target, {'new': True}, required=True)
+            self.assertTrue(write_snapshot(target, {'new': True}, required=True))
+            self.assertEqual(json.loads(target.read_text()), {'new': True})
+
     def test_network_failure_does_not_replace_existing_corpus_with_empty_files(self):
         with tempfile.TemporaryDirectory() as temporary:
             pages = Path(temporary) / 'pages.json'
@@ -118,6 +131,21 @@ class ChunkTests(unittest.TestCase):
         page['title'] = 'Workshop 2024 and 2025'
         self.assertEqual(page_metadata(page)['year'], '')
 
+    def test_lexical_only_cli_writes_complete_sidecar_without_embedding_or_chroma(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source, output = root / 'pages.json', root / 'text_records.json'
+            source.write_text(json.dumps([{'url': 'https://example.com/a/', 'title': 'A', 'text': 'Fact'}]), encoding='utf-8')
+            with patch('sys.argv', ['index', '--pages', str(source), '--lexical-only',
+                                    '--lexical-output', str(output)]), patch('build.index.build_index') as dense:
+                index_main()
+            records = json.loads(output.read_text(encoding='utf-8'))
+            self.assertEqual(len(records), 1)
+            self.assertEqual(records[0]['text'], 'A\nFact')
+            self.assertEqual(records[0]['metadata']['url'], 'https://example.com/a/')
+            self.assertFalse(output.with_suffix('.json.tmp').exists())
+            dense.assert_not_called()
+
     def test_failed_embeddings_preserve_existing_collection(self):
         page = {'url': 'https://example.com/a/', 'title': 'A', 'text': 'Fact'}
         with patch('build.embeddings.cached_embed', side_effect=RuntimeError('gateway unavailable')), patch('bot.store.get_store') as store:
@@ -131,7 +159,7 @@ class ChunkTests(unittest.TestCase):
         store._client.get_max_batch_size.return_value = 1
         with patch('build.embeddings.cached_embed', return_value=[[1.0, 0.0]]) as embed, patch('bot.store.get_store', return_value=store):
             self.assertIs(build_index([page]), store)
-        embed.assert_called_once_with(['A\nFact'])
+        embed.assert_called_once_with(['A\nFact'], wait_for_quota=False)
         store.upsert.assert_called_once()
         self.assertEqual(store.upsert.call_args.kwargs['embeddings'], [[1.0, 0.0]])
         self.assertEqual(store.upsert.call_args.kwargs['metadatas'][0]['url'], page['url'])

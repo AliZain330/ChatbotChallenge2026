@@ -50,8 +50,23 @@ def _request(method: str, resource: str, timeout: float, payload: dict = None,
                  429: 'free-tier quota exhausted; wait or reduce ingestion, do not enable billing',
                  503: 'service unavailable; retry manually later'}
         hint = hints.get(response.status_code, 'inspect provider status and configuration')
-        # Omit remote error bodies, which can echo user input or credentials.
-        raise RuntimeError(f'Gemini HTTP required=2xx, actual={response.status_code}; {hint}')
+        # Only expose structured quota identifiers/limits, never the free-form
+        # error message or request (both can echo input or credentials).
+        quota = []
+        if response.status_code == 429:
+            try:
+                details = response.json().get('error', {}).get('details', [])
+                for detail in details:
+                    if detail.get('retryDelay'):
+                        quota.append('retry_after=' + str(detail['retryDelay']))
+                    for violation in detail.get('violations', []):
+                        quota.extend(f'{field}={violation[field]}' for field in
+                                     ['quotaMetric', 'quotaId', 'quotaValue'] if field in violation)
+            except (ValueError, TypeError, AttributeError):
+                pass
+        safe_quota = re.sub(r'[^A-Za-z0-9_=./:;, -]', '', '; '.join(quota).replace(key, '[redacted]'))
+        raise RuntimeError(f'Gemini HTTP required=2xx, actual={response.status_code}; {hint}'
+                           + (f'; {safe_quota}' if safe_quota else ''))
     try:
         result = response.json()
     except ValueError:

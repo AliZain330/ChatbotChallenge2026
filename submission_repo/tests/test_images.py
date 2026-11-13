@@ -56,7 +56,7 @@ class ImageTests(unittest.TestCase):
     def test_index_uses_upsert_with_same_id_on_rerun(self):
         store = MagicMock()
         record = {'src': 'local:photo', 'zone': 'Makerspace A'}
-        with patch.object(images, 'get_store', return_value=store), patch.object(images, 'cached_embed', return_value=[[1.0, 0.0]]):
+        with patch.object(images, '_save_search_records'), patch.object(images, 'get_store', return_value=store), patch.object(images, 'cached_embed', return_value=[[1.0, 0.0]]):
             images.index_descriptions({'local:photo': 'two visible tables'}, [record])
             images.index_descriptions({'local:photo': 'two visible tables'}, [record])
         calls = store.upsert.call_args_list
