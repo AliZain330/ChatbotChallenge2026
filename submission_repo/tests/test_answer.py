@@ -16,6 +16,8 @@ class AnswerTests(unittest.TestCase):
         q = "Compare Makerspace A and Makerspace B"
         self.assertEqual(answer.decompose(q), [q, "Compare Makerspace A", "Makerspace B"])
         self.assertEqual(answer.decompose("What are PVC and teflon?"), ["What are PVC and teflon?"])
+        compound = "What does FDM stand for and which laser materials are banned?"
+        self.assertEqual(answer.decompose(compound), [compound, "What does FDM stand for", "which laser materials are banned"])
 
     def test_answer_grounded_and_single_line(self):
         chunks = [{"text": "FDM means fused deposition modelling", "metadata": {"url": "source"}}]

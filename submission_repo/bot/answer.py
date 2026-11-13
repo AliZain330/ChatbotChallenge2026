@@ -39,7 +39,8 @@ def decompose(question: str) -> list[str]:
     """Add separate retrieval views for explicit comparisons, with no LLM call."""
     parts = re.split(r"\s+(?:versus|vs\.?|compared (?:to|with))\s+", question,
                      flags=re.IGNORECASE)
-    if len(parts) == 1 and re.search(r"\b(compare|difference|both|total|combined)\b", question, re.I):
+    compound = re.search(r"\band\s+(?:what|which|who|when|where|how)\b", question, re.I)
+    if len(parts) == 1 and (compound or re.search(r"\b(compare|difference|both|total|combined)\b", question, re.I)):
         parts = re.split(r"\s+and\s+", question, flags=re.IGNORECASE)
     if len(parts) == 1:
         return [question]
@@ -189,7 +190,8 @@ def _answer(question: str) -> str:
     """One question, one answer; no scraping or vision is allowed here."""
     # The workshop's Level 1 vocabulary questions need the model's general
     # knowledge. Supplying unrelated machine examples confuses broad synonyms.
-    terminology = bool(re.search(r"\b(?:stand for|also known as)\b", question, re.I))
+    terminology = (bool(re.search(r"\b(?:stand for|also known as)\b", question, re.I))
+                   and len(decompose(question)) == 1)
     chunks = [] if terminology else retrieve(question)
     inventory = inventory_counts(question)
     context = "\n\n".join(
