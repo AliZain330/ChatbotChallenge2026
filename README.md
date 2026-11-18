@@ -1,61 +1,29 @@
-# InnoWing Chatbot Challenge 2026
+# InnoWing chatbot practice
 
-> **Independent self-training fork:** this implementation adds an opt-in Gemini provider and is not an official challenge submission. See the [runbook](submission_repo/README.md) and [implementation report](IMPLEMENTATION_REPORT.md). Original teaching materials follow below.
+I built this chatbot to practise the HKU InnoWing AI Chatbot Challenge. It answers questions using saved website text and image descriptions.
 
-Materials for the InnoWing Chatbot Challenge — building a retrieval-augmented
-(RAG) chatbot about the Tam Wing Fan Innovation Wing.
+I used Gemini because I do not have the organisers' Azure key. The original challenge requires their gateway, so this version is for self-training. I kept `main.py` and the two required answer functions unchanged.
 
-## 👉 Start here: [`submission_repo/`](submission_repo/)
+## Results
 
-**Your bot lives in [`submission_repo/`](submission_repo/).** That folder is the
-scaffold you fork, build on, and submit. Everything else in this repository is
-supporting material.
+- 7 of 9 development answers correct on review; 4 exact matches.
+- 72 tests pass.
+- 1,973 saved pages and 20,346 text chunks available for keyword search.
+- 1,352 records in the Gemini vector index, up from 252.
 
-## Repository layout
+The larger index has not raised the score on these nine questions. I need the old funding deadline and a reliable printer inventory.
 
-| Path | What it is |
-|---|---|
-| [`submission_repo/`](submission_repo/) | **The submission scaffold — start here.** `main.py` + `bot/` + `build/`. This is what you fork and submit. |
-| [`Labs/`](Labs/) | Workshop lab notebooks (`lab1`–`lab5`) with a sample corpus and prebuilt index for practice. Not your submission. |
-| [`Slides/`](Slides/) | Workshop decks: W0 (setup & rules), W1 (RAG pipeline), W2 (visual & physical data). |
+## Try it
 
-## Getting started
+With the local environment and `.env` ready, run from the repository folder:
 
-Requirements: Git, Python **3.9+**, and a code editor (VS Code recommended).
+```powershell
+cd submission_repo
+..\.venv\Scripts\python.exe main.py "Which two materials are banned from the laser cutter?"
+```
 
-1. **Fork** this repository, then clone your fork.
-2. Work inside [`submission_repo/`](submission_repo/):
+See the [setup and test commands](submission_repo/README.md) or the [short practice report](IMPLEMENTATION_REPORT.md).
 
-   ```bash
-   cd submission_repo
-   python -m venv .venv
-   # macOS & Linux:
-   source .venv/bin/activate
-   # Windows:
-   .venv\Scripts\activate
+I kept credentials, generated indexes and the learning guide out of Git. A fresh clone needs credentials and local data before it can retrieve evidence.
 
-   pip install -r requirements.txt
-   ```
-
-3. Add your credentials:
-
-   ```bash
-   cp .env.example .env   # then fill in your key
-   python check_setup.py  # verify your setup before Workshop 1
-   ```
-
-4. Build your bot — edit `bot/answer.py` and the files under `build/`
-   (`main.py`, `bot/llm.py`, `bot/store.py` are given), build your index, then run:
-
-   ```bash
-   python main.py "your question"
-   ```
-
-   That is the same command the grader uses.
-
-## Workshops
-
-Work through the notebooks in [`Labs/`](Labs/) alongside the decks in
-[`Slides/`](Slides/). The labs are practice exercises and are **not** your
-submission — see [`Labs/Notebook_Guide.md`](Labs/Notebook_Guide.md) for how they
-map to the two workshops.
+The original materials remain in [Slides](Slides/) and [Labs](Labs/Notebook_Guide.md). The lab sample text describes a fictional centre, so I did not use it as InnoWing evidence.
